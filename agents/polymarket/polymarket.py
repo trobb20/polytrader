@@ -205,14 +205,19 @@ class Polymarket:
             if market.active:
                 tradeable_markets.append(market)
         return tradeable_markets
-
-    def get_market(self, token_id: str) -> SimpleMarket:
-        params = {"clob_token_ids": token_id}
+    
+    def get_market_by_params(self, params: dict) -> SimpleMarket:
         res = httpx.get(self.gamma_markets_endpoint, params=params)
         if res.status_code == 200:
             data = res.json()
             market = data[0]
-            return self.map_api_to_market(market, token_id)
+            return self.map_api_to_market(market)
+
+    def get_market_by_token_id(self, token_id: str) -> SimpleMarket:
+        return self.get_market_by_params({"clob_token_ids": token_id})
+
+    def get_market_by_slug(self, slug: str) -> SimpleMarket:
+        return self.get_market_by_params({"slug": slug})
 
     def map_api_to_market(self, market, token_id: str = "") -> SimpleMarket:
         market = {

@@ -43,6 +43,20 @@ class SimpleMarket(BaseModel):
     outcome_prices: str
     clob_token_ids: Optional[str]
 
+    @property
+    def token1(self):
+        if self.clob_token_ids:
+            return eval(self.clob_token_ids)[0]
+        else:
+            return None
+
+    @property
+    def token2(self):
+        if self.clob_token_ids:
+            return eval(self.clob_token_ids)[1]
+        else:
+            return None
+
 
 class ClobReward(BaseModel):
     id: str  # returned as string in api but really an int?
