@@ -238,7 +238,7 @@ class Polymarket:
         }
         if token_id:
             market["clob_token_ids"] = token_id
-        return market
+        return SimpleMarket(**market)
 
     def get_all_events(self) -> "list[SimpleEvent]":
         events = []
