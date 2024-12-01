@@ -232,9 +232,9 @@ class Polymarket:
             "rewardsMaxSpread": float(market["rewardsMaxSpread"]),
             # "volume": float(market["volume"]),
             "spread": float(market["spread"]),
-            "outcomes": str(market["outcomes"]),
-            "outcome_prices": str(market["outcomePrices"]),
-            "clob_token_ids": str(market["clobTokenIds"]),
+            "outcomes": ast.literal_eval(market["outcomes"]),
+            "outcome_prices": ast.literal_eval(market["outcomePrices"]),
+            "clob_token_ids": ast.literal_eval(market["clobTokenIds"]),
         }
         if token_id:
             market["clob_token_ids"] = token_id

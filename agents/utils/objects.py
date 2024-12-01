@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Union
 from pydantic import BaseModel
-
+from typing import List
 
 class Trade(BaseModel):
     id: int
@@ -39,21 +39,21 @@ class SimpleMarket(BaseModel):
     rewardsMaxSpread: float
     # volume: Optional[float]
     spread: float
-    outcomes: str
-    outcome_prices: str
-    clob_token_ids: Optional[str]
+    outcomes: List[str]
+    outcome_prices: List[float]
+    clob_token_ids: Optional[List[int]]
 
     @property
     def token1(self):
         if self.clob_token_ids:
-            return eval(self.clob_token_ids)[0]
+            return self.clob_token_ids[0]
         else:
             return None
 
     @property
     def token2(self):
         if self.clob_token_ids:
-            return eval(self.clob_token_ids)[1]
+            return self.clob_token_ids[1]
         else:
             return None
 
