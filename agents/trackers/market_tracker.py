@@ -147,7 +147,7 @@ class OrderBook:
                 del self.asks_history[ts]
                 del self.bids_history[ts]
 
-    def calculate_vwap_mid_price(self, threshold_pct: float = 0.1, timestamp: str = None) -> float:
+    def calculate_vwap_mid_price(self, threshold_pct: float = 0.05, timestamp: str = None) -> float:
         """
         Calculate the mid price using Volume-Weighted Average Price (VWAP) from asks and bids,
         considering only prices within a threshold percentage of the best prices.
