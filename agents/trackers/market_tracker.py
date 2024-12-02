@@ -8,7 +8,7 @@ import ast
 import pandas as pd
 from dataclasses import dataclass
 from typing import Optional, List, Dict
-
+import traceback
 @dataclass
 class LastTrade:
     price: float
@@ -181,26 +181,44 @@ class MarketChannel:
         try:
             while self.running and self.websocket:
                 message = await self.websocket.recv()
-                data_list = ast.literal_eval(message)
+                try:
+                    data_list = ast.literal_eval(message)
+                except Exception as e:
+                    print(f"Error parsing message: {e}")
+                    print(f"Raw message: {message}")
+                    continue
                 
                 # Handle both single messages and lists of messages
                 messages = data_list if isinstance(data_list, list) else [data_list]
                 
                 for data in messages:
-                    # Ensure data is for our asset
-                    if isinstance(data, dict) and 'asset_id' in data:
-                        asset_id = data['asset_id']
-                        # Get the outcome for this asset_id
-                        outcome = self.id_to_outcome.get(asset_id)
-                        if outcome and (callbacks := self.callbacks.get(asset_id)):
-                            for callback in callbacks:
-                                callback(outcome, data)
+                    try:
+                        # Ensure data is for our asset
+                        if isinstance(data, dict) and 'asset_id' in data:
+                            asset_id = data['asset_id']
+                            # Get the outcome for this asset_id
+                            outcome = self.id_to_outcome.get(asset_id)
+                            if outcome and (callbacks := self.callbacks.get(asset_id)):
+                                for callback in callbacks:
+                                    try:
+                                        callback(outcome, data)
+                                    except Exception as e:
+                                        print(f"Error in callback for outcome {outcome}:")
+                                        print(f"Callback: {callback.__name__ if hasattr(callback, '__name__') else callback}")
+                                        print(f"Data: {data}")
+                                        traceback.print_exc()
+                    except Exception as e:
+                        print(f"Error processing message data: {e}")
+                        print(f"Data causing error: {data}")
+                        traceback.print_exc()
 
         except websockets.exceptions.ConnectionClosed:
             print("WebSocket connection closed")
+            traceback.print_exc()
         except Exception as e:
-            print(f"Error in message handler: {e}")
-            print(f"Message that caused error: {message}")
+            print(f"Fatal error in message handler: {e}")
+            print(f"Last message received: {message}")
+            traceback.print_exc()
 
     def add_outcome_callback(self, outcome: str, callback: Callable[[str, dict], None]):
         """Add a callback for a specific outcome"""
