@@ -100,12 +100,13 @@ class OrderBook:
             timestamp=message['timestamp'],
             fee_rate_bps=message['fee_rate_bps']
         )
-        self.trades = self.trades.append({
+        new_trade = pd.DataFrame([{
             'price': self.last_trade.price,
             'size': self.last_trade.size,
             'side': self.last_trade.side,
             'timestamp': self.last_trade.timestamp
-        }, ignore_index=True)
+        }])
+        self.trades = pd.concat([self.trades, new_trade], ignore_index=True)
 
     def get_best_ask(self) -> Optional[tuple[float, float]]:
         """Return the best ask price and size"""
