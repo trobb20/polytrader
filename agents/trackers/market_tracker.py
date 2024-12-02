@@ -111,17 +111,15 @@ class OrderBook:
     def get_best_ask(self) -> Optional[tuple[float, float]]:
         """Return the best ask price and size"""
         if not self.asks.empty:
-            price = self.asks.index[0]
-            size = self.asks.iloc[0]['size']
-            return (price, size)
+            price = self.asks.index.min()
+            return price
         return None
 
     def get_best_bid(self) -> Optional[tuple[float, float]]:
         """Return the best bid price and size"""
         if not self.bids.empty:
-            price = self.bids.index[0]
-            size = self.bids.iloc[0]['size']
-            return (price, size)
+            price = self.bids.index.max()
+            return price
         return None
 
     def get_spread(self) -> Optional[float]:
@@ -148,6 +146,69 @@ class OrderBook:
             if ts < timestamp:
                 del self.asks_history[ts]
                 del self.bids_history[ts]
+
+    def calculate_vwap_mid_price(self, threshold_pct: float = 0.1, timestamp: str = None) -> float:
+        """
+        Calculate the mid price using Volume-Weighted Average Price (VWAP) from asks and bids,
+        considering only prices within a threshold percentage of the best prices.
+        
+        Args:
+            threshold_pct: Percentage threshold from best price (0.1 = 10%)
+            timestamp: Optional specific timestamp to calculate VWAP for.
+                    If None, uses current order book.
+        
+        Returns:
+            float: VWAP mid price
+        """
+        if timestamp:
+            asks = self.asks_history.get(timestamp)
+            bids = self.bids_history.get(timestamp)
+            if asks is None or bids is None:
+                return None
+        else:
+            asks = self.asks
+            bids = self.bids
+
+        if asks.empty or bids.empty:
+            return None
+
+        # Get best prices
+        best_ask = asks.index.min()
+        best_bid = bids.index.max()
+
+        # Calculate price thresholds
+        ask_threshold = best_ask * (1 + threshold_pct)
+        bid_threshold = best_bid * (1 - threshold_pct)
+
+        # Filter orders within threshold
+        valid_asks = asks[asks.index <= ask_threshold]
+        valid_bids = bids[bids.index >= bid_threshold]
+
+        # Calculate VWAP for asks
+        if not valid_asks.empty:
+            asks_total_value = (valid_asks.index * valid_asks['size']).sum()
+            asks_total_volume = valid_asks['size'].sum()
+            vwap_asks = asks_total_value / asks_total_volume if asks_total_volume > 0 else None
+        else:
+            vwap_asks = None
+
+        # Calculate VWAP for bids
+        if not valid_bids.empty:
+            bids_total_value = (valid_bids.index * valid_bids['size']).sum()
+            bids_total_volume = valid_bids['size'].sum()
+            vwap_bids = bids_total_value / bids_total_volume if bids_total_volume > 0 else None
+        else:
+            vwap_bids = None
+
+        # Calculate mid price
+        if vwap_asks is not None and vwap_bids is not None:
+            return (vwap_asks + vwap_bids) / 2
+        elif vwap_asks is not None:
+            return vwap_asks
+        elif vwap_bids is not None:
+            return vwap_bids
+        else:
+            return None
 
 class MarketChannel:
     def __init__(self, market_obj: SimpleMarket):
