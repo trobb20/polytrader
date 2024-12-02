@@ -42,7 +42,7 @@ MarketMessage = Union[BookMessage, PriceChangeMessage, TickSizeChangeMessage]
 
 class MarketChannel:
     def __init__(self):
-        self.ws_url = 'wss://clob.polymarket.com/ws'
+        self.ws_url = 'wss://ws-subscriptions-clob.polymarket.com/ws/market'
         self.websocket = None
         self.callbacks: Dict[str, List[Callable[[MarketMessage], None]]] = {}
         self.running = False
@@ -67,17 +67,24 @@ class MarketChannel:
         try:
             while self.running and self.websocket:
                 message = await self.websocket.recv()
-                data: MarketMessage = json.loads(message)
+                data_list = json.loads(message)
                 
-                # Call all callbacks registered for this market
-                if callbacks := self.callbacks.get(data['market']):
-                    for callback in callbacks:
-                        callback(data)
+                # Handle both single messages and lists of messages
+                messages = data_list if isinstance(data_list, list) else [data_list]
+                
+                for data in messages:
+                    # Ensure data is a MarketMessage
+                    if isinstance(data, dict) and 'market' in data:
+                        # Call all callbacks registered for this market
+                        if callbacks := self.callbacks.get(data['market']):
+                            for callback in callbacks:
+                                callback(data)
 
         except websockets.exceptions.ConnectionClosed:
             print("WebSocket connection closed")
         except Exception as e:
             print(f"Error in message handler: {e}")
+            print(f"Message that caused error: {message}")
 
     def add_market_callback(self, market: str, callback: Callable[[MarketMessage], None]):
         """Add a callback for a specific market"""
