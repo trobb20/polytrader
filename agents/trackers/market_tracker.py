@@ -3,6 +3,7 @@ import json
 import websockets
 import asyncio
 from typing import Callable, Dict, List, TypedDict, Union, Literal
+import ast
 
 class OrderSummary(TypedDict):
     price: str
@@ -67,7 +68,7 @@ class MarketChannel:
         try:
             while self.running and self.websocket:
                 message = await self.websocket.recv()
-                data_list = json.loads(message)
+                data_list = ast.literal_eval(message)
                 
                 # Handle both single messages and lists of messages
                 messages = data_list if isinstance(data_list, list) else [data_list]
@@ -75,8 +76,8 @@ class MarketChannel:
                 for data in messages:
                     # Ensure data is a MarketMessage
                     if isinstance(data, dict) and 'market' in data:
-                        # Call all callbacks registered for this market
-                        if callbacks := self.callbacks.get(data['market']):
+                        # Call all callbacks registered for this asset
+                        if callbacks := self.callbacks.get(data['asset_id']):
                             for callback in callbacks:
                                 callback(data)
 
@@ -86,18 +87,18 @@ class MarketChannel:
             print(f"Error in message handler: {e}")
             print(f"Message that caused error: {message}")
 
-    def add_market_callback(self, market: str, callback: Callable[[MarketMessage], None]):
-        """Add a callback for a specific market"""
-        if market not in self.callbacks:
-            self.callbacks[market] = []
-        self.callbacks[market].append(callback)
+    def add_asset_callback(self, asset_id: str, callback: Callable[[MarketMessage], None]):
+        """Add a callback for a specific asset"""
+        if asset_id not in self.callbacks:
+            self.callbacks[asset_id] = []
+        self.callbacks[asset_id].append(callback)
 
-    def remove_market_callback(self, market: str, callback: Callable[[MarketMessage], None]):
-        """Remove a callback for a specific market"""
-        if market in self.callbacks and callback in self.callbacks[market]:
-            self.callbacks[market].remove(callback)
-            if not self.callbacks[market]:
-                del self.callbacks[market]
+    def remove_asset_callback(self, asset_id: str, callback: Callable[[MarketMessage], None]):
+        """Remove a callback for a specific asset"""
+        if asset_id in self.callbacks and callback in self.callbacks[asset_id]:
+            self.callbacks[asset_id].remove(callback)
+            if not self.callbacks[asset_id]:
+                del self.callbacks[asset_id]
 
     async def close(self):
         """Close the WebSocket connection"""
@@ -131,9 +132,8 @@ async def main():
     ]
     await market_channel.connect(asset_ids)
 
-    # Add callback for specific markets
-    market_id = str(market_obj.id)
-    market_channel.add_market_callback(market_id, handle_market_update)
+    # Add callback for specific assets
+    market_channel.add_asset_callback(str(market_obj.clob_token_ids[0]), handle_market_update)
 
     try:
         # Keep connection alive
