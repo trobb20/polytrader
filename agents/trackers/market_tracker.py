@@ -1,4 +1,5 @@
 from agents.polymarket.polymarket import Polymarket
+from agents.utils.objects import SimpleMarket
 import json
 import websockets
 import asyncio
@@ -13,8 +14,8 @@ class BookMessage(TypedDict):
     event_type: Literal['book']
     asset_id: str
     market: str
-    buys: List[OrderSummary]
-    sells: List[OrderSummary]
+    bids: List[OrderSummary]
+    asks: List[OrderSummary]
     timestamp: str
     hash: str
 
@@ -31,6 +32,15 @@ class PriceChangeMessage(TypedDict):
     timestamp: str
     hash: str
 
+class LastTradePriceMessage(TypedDict):
+    event_type: Literal['last_trade_price']
+    asset_id: str
+    market: str
+    price: str
+    timestamp: str
+    side: Literal['BUY', 'SELL']
+    size: str
+
 class TickSizeChangeMessage(TypedDict):
     event_type: Literal['tick_size_change']
     asset_id: str
@@ -39,16 +49,21 @@ class TickSizeChangeMessage(TypedDict):
     new_tick_size: str
     timestamp: str
 
-MarketMessage = Union[BookMessage, PriceChangeMessage, TickSizeChangeMessage]
+MarketMessage = Union[BookMessage, PriceChangeMessage, TickSizeChangeMessage, LastTradePriceMessage]
 
 class MarketChannel:
-    def __init__(self):
+    def __init__(self, market_obj: SimpleMarket):
         self.ws_url = 'wss://ws-subscriptions-clob.polymarket.com/ws/market'
         self.websocket = None
-        self.callbacks: Dict[str, List[Callable[[MarketMessage], None]]] = {}
+        self.callbacks: Dict[str, List[Callable[[str, MarketMessage], None]]] = {}
         self.running = False
+        self.outcomes = [str(outcome) for outcome in market_obj.outcomes]
+        self.outcomes_id = {
+            outcome: str(market_obj.clob_token_ids[index]) for index, outcome in enumerate(market_obj.outcomes)
+        }
+        self.id_to_outcome = {v: k for k, v in self.outcomes_id.items()}
 
-    async def connect(self, assets_ids: List[str]):
+    async def connect(self):
         """Connect and subscribe to market updates for given asset IDs"""
         self.websocket = await websockets.connect(self.ws_url)
         self.running = True
@@ -56,7 +71,7 @@ class MarketChannel:
         # Send subscription message
         subscribe_message = {
             "type": "Market",
-            "assets_ids": assets_ids
+            "assets_ids": list(self.outcomes_id.values())
         }
         await self.websocket.send(json.dumps(subscribe_message))
         
@@ -75,11 +90,13 @@ class MarketChannel:
                 
                 for data in messages:
                     # Ensure data is a MarketMessage
-                    if isinstance(data, dict) and 'market' in data:
-                        # Call all callbacks registered for this asset
-                        if callbacks := self.callbacks.get(data['asset_id']):
+                    if isinstance(data, dict) and 'asset_id' in data:
+                        asset_id = data['asset_id']
+                        # Get the outcome for this asset_id
+                        outcome = self.id_to_outcome.get(asset_id)
+                        if outcome and (callbacks := self.callbacks.get(asset_id)):
                             for callback in callbacks:
-                                callback(data)
+                                callback(outcome, MarketMessage(**data))
 
         except websockets.exceptions.ConnectionClosed:
             print("WebSocket connection closed")
@@ -87,14 +104,16 @@ class MarketChannel:
             print(f"Error in message handler: {e}")
             print(f"Message that caused error: {message}")
 
-    def add_asset_callback(self, asset_id: str, callback: Callable[[MarketMessage], None]):
-        """Add a callback for a specific asset"""
+    def add_outcome_callback(self, outcome: str, callback: Callable[[str, MarketMessage], None]):
+        """Add a callback for a specific outcome"""
+        asset_id = self.outcomes_id[outcome]
         if asset_id not in self.callbacks:
             self.callbacks[asset_id] = []
         self.callbacks[asset_id].append(callback)
 
-    def remove_asset_callback(self, asset_id: str, callback: Callable[[MarketMessage], None]):
-        """Remove a callback for a specific asset"""
+    def remove_outcome_callback(self, outcome: str, callback: Callable[[str, MarketMessage], None]):
+        """Remove a callback for a specific outcome"""
+        asset_id = self.outcomes_id[outcome]
         if asset_id in self.callbacks and callback in self.callbacks[asset_id]:
             self.callbacks[asset_id].remove(callback)
             if not self.callbacks[asset_id]:
@@ -105,42 +124,3 @@ class MarketChannel:
         self.running = False
         if self.websocket:
             await self.websocket.close()
-
-async def main():
-    p=Polymarket()
-    market_obj = p.get_market_by_slug('nfl-phi-bal-2024-12-01')
-    # Initialize market channel
-    market_channel = MarketChannel()
-
-    # Example callback function
-    def handle_market_update(message: MarketMessage):
-        if message['event_type'] == 'book':
-            print(f"Book update for market {message['market']}:")
-            print(f"Buys: {message['buys']}")
-            print(f"Sells: {message['sells']}")
-        elif message['event_type'] == 'price_change':
-            print(f"Price changes for market {message['market']}:")
-            print(f"Changes: {message['changes']}")
-        elif message['event_type'] == 'tick_size_change':
-            print(f"Tick size changed for market {message['market']}:")
-            print(f"From {message['old_tick_size']} to {message['new_tick_size']}")
-
-    # Connect with asset IDs you want to track
-    asset_ids = [
-       str(market_obj.clob_token_ids[0]),
-       str(market_obj.clob_token_ids[1])
-    ]
-    await market_channel.connect(asset_ids)
-
-    # Add callback for specific assets
-    market_channel.add_asset_callback(str(market_obj.clob_token_ids[0]), handle_market_update)
-
-    try:
-        # Keep connection alive
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        await market_channel.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())
