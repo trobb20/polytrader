@@ -170,19 +170,19 @@ class OrderBook:
                     If None, uses current order book.
         
         Returns:
-            float: VWAP mid price
+            float: VWAP mid price or None if calculation not possible
         """
         if timestamp:
-            asks = self.asks_history.get(timestamp)
-            bids = self.bids_history.get(timestamp)
-            if asks is None or bids is None:
+            # Get the specific timestamp column and convert to DataFrame
+            asks = pd.DataFrame({'size': self.asks_history[timestamp]}).dropna()
+            bids = pd.DataFrame({'size': self.bids_history[timestamp]}).dropna()
+            if asks.empty or bids.empty:
                 return None
         else:
             asks = self.asks
             bids = self.bids
-
-        if asks.empty or bids.empty:
-            return None
+            if asks.empty or bids.empty:
+                return None
 
         # Get best prices
         best_ask = asks.index.min()
