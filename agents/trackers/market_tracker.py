@@ -10,9 +10,13 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict
 import traceback
 import time
+import logging
 
 class MarketChannel:
-    def __init__(self, market_obj: SimpleMarket):
+    def __init__(self, 
+                 market_obj: SimpleMarket,
+                 logger: logging.Logger = logging.getLogger(__name__)):
+        self.logger = logger
         self.ws_url = 'wss://ws-subscriptions-clob.polymarket.com/ws/market'
         self.websocket = None
         self.callbacks: Dict[str, List[Callable[[str, dict], None]]] = {}
@@ -44,9 +48,11 @@ class MarketChannel:
             # Start message handler and ping task
             asyncio.create_task(self._message_handler())
             asyncio.create_task(self._ping_loop())
+
+            self.logger.info("Connected to market successfully")
             
         except Exception as e:
-            print(f"Error during connection: {e}")
+            self.logger.error(f"Error during connection: {e}")
             raise
 
     async def _ping_loop(self):
@@ -58,7 +64,7 @@ class MarketChannel:
                     self.last_ping = time.time()
                 await asyncio.sleep(1)  # Check every second
             except Exception as e:
-                print(f"Error in ping loop: {e}")
+                self.logger.error(f"Error in ping loop: {e}")
                 await asyncio.sleep(1)
 
     async def _reconnect(self):
@@ -68,18 +74,18 @@ class MarketChannel:
 
         while self.running and attempts < self.max_reconnect_attempts:
             try:
-                print(f"Attempting to reconnect... (attempt {attempts + 1}/{self.max_reconnect_attempts})")
+                self.logger.info(f"Attempting to reconnect... (attempt {attempts + 1}/{self.max_reconnect_attempts})")
                 await self.connect()
-                print("Successfully reconnected!")
+                self.logger.info("Successfully reconnected!")
                 return True
             except Exception as e:
                 attempts += 1
-                print(f"Reconnection attempt {attempts} failed: {e}")
+                self.logger.warning(f"Reconnection attempt {attempts} failed: {e}")
                 if attempts < self.max_reconnect_attempts:
                     await asyncio.sleep(current_delay)
                     current_delay *= 2  # Exponential backoff
         
-        print("Max reconnection attempts reached. Giving up.")
+        self.logger.error("Max reconnection attempts reached. Giving up.")
         return False
 
     async def _message_handler(self):
@@ -93,8 +99,8 @@ class MarketChannel:
                     try:
                         data_list = ast.literal_eval(message)
                     except Exception as e:
-                        print(f"Error parsing message: {e}")
-                        print(f"Raw message: {message}")
+                        self.logger.warning(f"Error parsing message: {e}")
+                        self.logger.warning(f"Raw message: {message}")
                         continue
                     
                     # Handle both single messages and lists of messages
@@ -112,31 +118,31 @@ class MarketChannel:
                                         try:
                                             callback(outcome, data)
                                         except Exception as e:
-                                            print(f"Error in callback for outcome {outcome}:")
-                                            print(f"Callback: {callback.__name__ if hasattr(callback, '__name__') else callback}")
-                                            print(f"Data: {data}")
-                                            traceback.print_exc()
+                                            self.logger.error(f"Error in callback for outcome {outcome}:")
+                                            self.logger.error(f"Callback: {callback.__name__ if hasattr(callback, '__name__') else callback}")
+                                            self.logger.error(f"Data: {data}")
+                                            self.logger.error(traceback.format_exc())
                         except Exception as e:
-                            print(f"Error processing message data: {e}")
-                            print(f"Data causing error: {data}")
-                            traceback.print_exc()
+                            self.logger.error(f"Error processing message data: {e}")
+                            self.logger.error(f"Data causing error: {data}")
+                            self.logger.error(traceback.format_exc())
 
             except websockets.exceptions.ConnectionClosed:
-                print("WebSocket connection closed unexpectedly")
+                self.logger.warning("WebSocket connection closed unexpectedly")
                 if self.running:
                     success = await self._reconnect()
                     if not success:
                         break
                     
             except Exception as e:
-                print(f"Fatal error in message handler: {e}")
-                traceback.print_exc()
+                self.logger.error(f"Fatal error in message handler: {e}")
+                self.logger.error(traceback.format_exc())
                 if self.running:
                     success = await self._reconnect()
                     if not success:
                         break
 
-        print("Message handler stopped")
+        self.logger.info("Message handler stopped")
 
     def add_outcome_callback(self, outcome: str, callback: Callable[[str, dict], None]):
         """Add a callback for a specific outcome"""
@@ -157,4 +163,6 @@ class MarketChannel:
         """Close the WebSocket connection"""
         self.running = False
         if self.websocket:
+            self.logger.info("Closing WebSocket connection")
             await self.websocket.close()
+            self.logger.info("WebSocket connection closed")
