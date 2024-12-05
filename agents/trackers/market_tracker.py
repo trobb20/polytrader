@@ -11,6 +11,7 @@ from typing import Optional, List, Dict
 import traceback
 import time
 import logging
+from pprint import pformat
 
 class MarketChannel:
     def __init__(self, 
@@ -133,14 +134,16 @@ class MarketChannel:
                                             self.logger.error(f"Callback: {callback.__name__ if hasattr(callback, '__name__') else callback}")
                                             self.logger.error(f"Data: {data}")
                                             self.logger.error(traceback.format_exc())
+                                        else:
+                                            self.logger.debug(f"Callback for data {pformat(data)} executed successfully")
                         except Exception as e:
                             self.logger.error("Error processing message data")
-                            self.logger.error(f"Data causing error: {data}")
+                            self.logger.error(f"Data causing error: {pformat(data)}")
                             self.logger.error(traceback.format_exc())
 
             except websockets.exceptions.ConnectionClosed:
-                self.logger.warning("WebSocket connection closed unexpectedly")
                 if self.running:
+                    self.logger.warning("WebSocket connection closed unexpectedly")
                     success = await self._reconnect()
                     if not success:
                         break
