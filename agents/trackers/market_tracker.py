@@ -39,24 +39,7 @@ class MarketChannel:
         """Connect and subscribe to market updates for given asset IDs"""
         try:            
             # Clean up existing connection and tasks
-            if self.websocket:
-                await self.websocket.close()
-
-            # Cancel any existing tasks if we're reconnecting
-            if self.message_handler_task is not None and isinstance(self.message_handler_task, asyncio.Task):
-                self.logger.debug("Cancelling existing message handler task")
-                self.message_handler_task.cancel()
-                try: 
-                    await self.message_handler_task
-                except asyncio.CancelledError:
-                    self.logger.debug("Message handler task cancelled")
-            if self.ping_task is not None and isinstance(self.ping_task, asyncio.Task):
-                self.logger.debug("Cancelling existing ping task")
-                self.ping_task.cancel()
-                try: 
-                    await self.ping_task
-                except asyncio.CancelledError:
-                    self.logger.debug("Ping task cancelled")
+            await self._cleanup()
 
             # Begin the connection
             self.websocket = await websockets.connect(self.ws_url)
@@ -164,10 +147,8 @@ class MarketChannel:
             except Exception as e:
                 self.logger.error("Fatal error in message handler")
                 self.logger.error(traceback.format_exc())
-                if self.running:
-                    success = await self._reconnect()
-                    if not success:
-                        break
+                self.running = False
+                break
 
         self.logger.info("Message handler stopped")
 
@@ -189,26 +170,29 @@ class MarketChannel:
     async def close(self):
         """Close the WebSocket connection"""
         self.running = False
-        
+        await self._cleanup()
+        self.logger.info("Market tracker closed")
+
+    async def _cleanup(self): 
+        self.logger.debug("Cleaning up connections")
         # Cancel and clean up tasks
-        if self.message_handler_task:
+        if self.message_handler_task is not None and isinstance(self.message_handler_task, asyncio.Task):
+            self.logger.debug("Cancelling existing message handler task")
             self.message_handler_task.cancel()
-            try:
+            try: 
                 await self.message_handler_task
             except asyncio.CancelledError:
-                pass
-            self.message_handler_task = None
-            
-        if self.ping_task:
+                self.logger.debug("Message handler task cancelled")
+        if self.ping_task is not None and isinstance(self.ping_task, asyncio.Task):
+            self.logger.debug("Cancelling existing ping task")
             self.ping_task.cancel()
-            try:
+            try: 
                 await self.ping_task
             except asyncio.CancelledError:
-                pass
-            self.ping_task = None
+                self.logger.debug("Ping task cancelled")
             
         if self.websocket:
-            self.logger.info("Closing WebSocket connection")
+            self.logger.debug("Closing WebSocket connection")
             await self.websocket.close()
             self.websocket = None
-            self.logger.info("WebSocket connection closed")
+            self.logger.debug("WebSocket connection closed")
