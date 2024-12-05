@@ -31,6 +31,9 @@ class MarketChannel:
         self.max_reconnect_attempts = 5
         self.reconnect_delay = 5  # Start with 5 seconds delay
 
+        self.message_handler_task = None
+        self.ping_task = None
+
     async def connect(self):
         """Connect and subscribe to market updates for given asset IDs"""
         try:
@@ -44,15 +47,23 @@ class MarketChannel:
                 "assets_ids": list(self.outcomes_id.values())
             }
             await self.websocket.send(json.dumps(subscribe_message))
+
+            # Cancel any existing tasks if we're reconnecting
+            if self.message_handler_task is not None and isinstance(self.message_handler_task, asyncio.Task):
+                self.logger.debug("Cancelling existing message handler task")
+                self.message_handler_task.cancel()
+            if self.ping_task is not None and isinstance(self.ping_task, asyncio.Task):
+                self.logger.debug("Cancelling existing ping task")
+                self.ping_task.cancel()
             
             # Start message handler and ping task
-            asyncio.create_task(self._message_handler())
-            asyncio.create_task(self._ping_loop())
+            self.message_handler_task = asyncio.create_task(self._message_handler())
+            self.ping_task = asyncio.create_task(self._ping_loop())
 
             self.logger.info("Connected to market successfully")
             
         except Exception as e:
-            self.logger.error(f"Error during connection: {e}")
+            self.logger.error(f"Error during connection: {traceback.format_exc()}")
             raise
 
     async def _ping_loop(self):
@@ -64,7 +75,7 @@ class MarketChannel:
                     self.last_ping = time.time()
                 await asyncio.sleep(1)  # Check every second
             except Exception as e:
-                self.logger.error(f"Error in ping loop: {e}")
+                self.logger.error(f"Error in ping loop: {traceback.format_exc()}")
                 await asyncio.sleep(1)
 
     async def _reconnect(self):
@@ -80,7 +91,7 @@ class MarketChannel:
                 return True
             except Exception as e:
                 attempts += 1
-                self.logger.warning(f"Reconnection attempt {attempts} failed: {e}")
+                self.logger.warning(f"Reconnection attempt {attempts} failed: {traceback.format_exc()}")
                 if attempts < self.max_reconnect_attempts:
                     await asyncio.sleep(current_delay)
                     current_delay *= 2  # Exponential backoff
@@ -99,7 +110,7 @@ class MarketChannel:
                     try:
                         data_list = ast.literal_eval(message)
                     except Exception as e:
-                        self.logger.warning(f"Error parsing message: {e}")
+                        self.logger.warning(f"Error parsing message: {traceback.format_exc()}")
                         self.logger.warning(f"Raw message: {message}")
                         continue
                     
@@ -123,7 +134,7 @@ class MarketChannel:
                                             self.logger.error(f"Data: {data}")
                                             self.logger.error(traceback.format_exc())
                         except Exception as e:
-                            self.logger.error(f"Error processing message data: {e}")
+                            self.logger.error("Error processing message data")
                             self.logger.error(f"Data causing error: {data}")
                             self.logger.error(traceback.format_exc())
 
@@ -135,7 +146,7 @@ class MarketChannel:
                         break
                     
             except Exception as e:
-                self.logger.error(f"Fatal error in message handler: {e}")
+                self.logger.error("Fatal error in message handler")
                 self.logger.error(traceback.format_exc())
                 if self.running:
                     success = await self._reconnect()

@@ -28,15 +28,23 @@ class OrderBook:
         """Save current state to history"""
         if not self.asks_history.empty:
             if not self.asks.empty:
-                self.asks_history = self.asks_history.join(other=self.asks.rename(columns={'size': timestamp}), how='outer')
-                self.asks_history.sort_index(inplace=True)
+                snapshot = self.asks.rename(columns={'size': timestamp})
+                if timestamp in self.asks_history.columns:
+                    self.asks_history.update(snapshot)
+                else:
+                    self.asks_history = self.asks_history.join(other=snapshot, how='outer')
+                    self.asks_history.sort_index(inplace=True)
         else:
             self.asks_history = self.asks.rename(columns={'size': timestamp})
         
         if not self.bids_history.empty:
             if not self.bids.empty:
-                self.bids_history = self.bids_history.join(other=self.bids.rename(columns={'size': timestamp}), how='outer')
-                self.bids_history.sort_index(inplace=True, ascending=False)
+                snapshot = self.bids.rename(columns={'size': timestamp})
+                if timestamp in self.bids_history.columns:
+                    self.bids_history.update(snapshot)
+                else:
+                    self.bids_history = self.bids_history.join(other=snapshot, how='outer')
+                    self.bids_history.sort_index(inplace=True, ascending=False)
         else:
             self.bids_history = self.bids.rename(columns={'size': timestamp})
 
