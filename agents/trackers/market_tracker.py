@@ -38,12 +38,8 @@ class MarketChannel:
     async def connect(self):
         """Connect and subscribe to market updates for given asset IDs"""
         try:            
-            # Clean up existing connection and tasks
-            await self._cleanup()
-
             # Begin the connection
             self.websocket = await websockets.connect(self.ws_url)
-            self.running = True
             self.last_ping = time.time()
 
             # Send subscription message
@@ -53,9 +49,12 @@ class MarketChannel:
             }
             await self.websocket.send(json.dumps(subscribe_message))
             
-            # Start message handler and ping task
-            self.message_handler_task = asyncio.create_task(self._message_handler())
-            self.ping_task = asyncio.create_task(self._ping_loop())
+            if not self.running:
+                # Start message handler and ping task
+                self.logger.info("Was not previously running, starting message handler routine")
+                self.message_handler_task = asyncio.create_task(self._message_handler())
+                self.ping_task = asyncio.create_task(self._ping_loop())
+                self.running = True
 
             self.logger.info("Connected to market successfully")
             
@@ -97,7 +96,7 @@ class MarketChannel:
         return False
 
     async def _message_handler(self):
-        """Handle incoming WebSocket messages"""
+        """Handle incoming WebSocket messages, core coroutine of the MarketTracker"""
         while self.running:
             try:
                 while self.running and self.websocket:
@@ -142,15 +141,17 @@ class MarketChannel:
                     self.logger.warning("WebSocket connection closed unexpectedly")
                     success = await self._reconnect()
                     if not success:
+                        self.running = False
                         break
                     
             except Exception as e:
                 self.logger.error("Fatal error in message handler")
                 self.logger.error(traceback.format_exc())
-                self.running = False
+                self.running = False    
                 break
 
         self.logger.info("Message handler stopped")
+        await self.close()
 
     def add_outcome_callback(self, outcome: str, callback: Callable[[str, dict], None]):
         """Add a callback for a specific outcome"""
